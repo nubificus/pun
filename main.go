@@ -31,6 +31,10 @@ import (
 	"github.com/moby/buildkit/frontend/dockerfile/parser"
 )
 
+const (
+	currentWD string = "client-WD"
+)
+
 type CLIOpts struct {
 	ContainerFile    string // The Containerfile to be used for building the unikernel container
 }
@@ -39,7 +43,7 @@ type BuildInstructions struct {
 	KernelSrc string // The source of the unikernel binary,either local or an image
 	InitrdSrc string // The source of the initrd, either local or an image (optional)
 	Copies    []instructions.CopyCommand // Copy commands
-	Annot     map[string]string // Annotations
+	Annots    map[string]string // Annotations
 }
 
 func usage() {
@@ -74,7 +78,7 @@ func getBuildBase(buildBase string) (*llb.State, error) {
 	return &retBase, nil
 }
 
-func copyIn(base llb.State, src string, dst string) (*llb.State, error) {
+func copyIn(base llb.State, from string, src string, dst string) llb.State {
 	var copyState llb.State
 	var localSrc llb.State
 
@@ -82,7 +86,7 @@ func copyIn(base llb.State, src string, dst string) (*llb.State, error) {
 	copyState = base.File(llb.Copy(localSrc, src, dst, &llb.CopyInfo{
 				CreateDestPath: true,}))
 
-	return &copyState, nil
+	return copyState
 }
 
 //func rumprunBuildBase() llb.State {
@@ -101,12 +105,11 @@ func copyIn(base llb.State, src string, dst string) (*llb.State, error) {
 
 func main() {
 	var cliOpts CLIOpts
-	var base *llb.State
-	var hasBase bool = false
-	var uruncAnnot map[string]string
+	var base llb.State
+	//var hasBase bool = false
 	var outState llb.State
-
-	uruncAnnot = make(map[string]string)
+	var buildInst BuildInstructions
+	buildInst.Annots = make(map[string]string)
 
 	cliOpts = parseCLIOpts()
 
@@ -124,14 +127,14 @@ func main() {
 
 	// Parse the Dockerfile
 	r := bytes.NewReader(CntrFileContent)
-	node, err := parser.Parse(r)
+	parseRes, err := parser.Parse(r)
 	if err != nil {
 		fmt.Println("Failed to parse  %s: %v", cliOpts.ContainerFile, err)
 		os.Exit(1)
 	}
 
 	// Traverse Dockerfile commands
-	for _, child := range node.AST.Children {
+	for _, child := range parseRes.AST.Children {
 		cmd, err := instructions.ParseInstruction(child)
 		if err != nil {
 			fmt.Println("Failed to parse instruction %s: %v", child.Value, err)
@@ -140,32 +143,24 @@ func main() {
 		switch c := cmd.(type) {
 		case *instructions.Stage:
 			// Handle FROM
-			if hasBase {
-				fmt.Println("Mult-stage builds are not supported")
+			if buildInst.KernelSrc != "" {
+				fmt.Println("Multi-stage builds are not supported")
 				os.Exit(1)
 			}
-			base, err = getBuildBase(c.BaseName)
-			if err != nil {
-				fmt.Println("Failed to set build base %s: %v", c.BaseName, err)
+			if c.BaseName == "scratch" {
+				buildInst.KernelSrc = currentWD
+			} else {
+				fmt.Println("Only scratch is allowed as base image")
 				os.Exit(1)
 			}
-			hasBase = true
 		case *instructions.CopyCommand:
 			// Handle COPY
-			if !hasBase {
-				fmt.Println("Build base has not been set")
-				os.Exit(1)
-			}
-			base, err = copyIn(*base, c.SourcePaths[0], c.DestPath)
-			if err != nil {
-				fmt.Println("Failed to copy files: %v", err)
-				os.Exit(1)
-			}
+			buildInst.Copies = append(buildInst.Copies, *c)
 		case *instructions.LabelCommand:
 			// Handle LABLE annotations
 			for _, kvp := range c.Labels {
 				annotKey := strings.Trim(kvp.Key, "\"")
-				uruncAnnot[annotKey] = strings.Trim(kvp.Value, "\"")
+				buildInst.Annots[annotKey] = strings.Trim(kvp.Value, "\"")
 			}
 		case instructions.Command:
 			// Catch all other commands
@@ -176,14 +171,18 @@ func main() {
 
 	}
 
-	for annot, val := range uruncAnnot {
+	for annot, val := range buildInst.Annots {
 		encoded := base64.StdEncoding.EncodeToString([]byte(val))
-		uruncAnnot[annot] = string(encoded)
+		buildInst.Annots[annot] = string(encoded)
 	}
-	byteObj, err := json.Marshal(uruncAnnot)
+	byteObj, err := json.Marshal(buildInst.Annots)
 	if err != nil {
 		fmt.Println("Failed to marshal urunc annotations: %v", err)
 		os.Exit(1)
+	}
+	base = llb.Scratch()
+	for _, aCopy := range buildInst.Copies {
+		base = copyIn(base, buildInst.KernelSrc, aCopy.SourcePaths[0], aCopy.DestPath)
 	}
 	outState = base.File(llb.Mkfile("/urunc.json", 0644, byteObj))
 	dt, err := outState.Marshal(context.TODO(), llb.LinuxAmd64)
