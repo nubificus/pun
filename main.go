@@ -26,13 +26,15 @@ import (
 	"io/ioutil"
 
 	"github.com/moby/buildkit/client/llb"
-	//ocispecs "github.com/opencontainers/image-spec/specs-go/v1"
+	ocispecs "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/moby/buildkit/frontend/dockerfile/instructions"
 	"github.com/moby/buildkit/frontend/dockerfile/parser"
 )
 
 const (
-	currentWD string = "client-WD"
+	currentWD          string = "client-WD"
+	unikraftKernelPath string = "/unikraft/bin/kernel"
+	unikraftHub        string = "unikraft.org"
 )
 
 type CLIOpts struct {
@@ -40,10 +42,9 @@ type CLIOpts struct {
 }
 
 type BuildInstructions struct {
-	KernelSrc string // The source of the unikernel binary,either local or an image
-	InitrdSrc string // The source of the initrd, either local or an image (optional)
-	Copies    []instructions.CopyCommand // Copy commands
-	Annots    map[string]string // Annotations
+	Base   string			  // The Base image to use
+	Copies []instructions.CopyCommand // Copy commands
+	Annots map[string]string	  // Annotations
 }
 
 func usage() {
@@ -143,16 +144,11 @@ func main() {
 		switch c := cmd.(type) {
 		case *instructions.Stage:
 			// Handle FROM
-			if buildInst.KernelSrc != "" {
+			if buildInst.Base != "" {
 				fmt.Println("Multi-stage builds are not supported")
 				os.Exit(1)
 			}
-			if c.BaseName == "scratch" {
-				buildInst.KernelSrc = currentWD
-			} else {
-				fmt.Println("Only scratch is allowed as base image")
-				os.Exit(1)
-			}
+			buildInst.Base = c.BaseName
 		case *instructions.CopyCommand:
 			// Handle COPY
 			buildInst.Copies = append(buildInst.Copies, *c)
@@ -180,9 +176,21 @@ func main() {
 		fmt.Println("Failed to marshal urunc annotations: %v", err)
 		os.Exit(1)
 	}
-	base = llb.Scratch()
+	if buildInst.Base == "scratch" {
+		base = llb.Scratch()
+	} else if strings.HasPrefix(buildInst.Base, unikraftHub) {
+		// Define the platform to qemu/amd64 so we cna pull unikraft images
+		platform := ocispecs.Platform{
+			OS:           "qemu",
+			Architecture: "amd64",
+		}
+		base = llb.Image(buildInst.Base, llb.Platform(platform),)
+	} else {
+		base = llb.Image(buildInst.Base)
+	}
+
 	for _, aCopy := range buildInst.Copies {
-		base = copyIn(base, buildInst.KernelSrc, aCopy.SourcePaths[0], aCopy.DestPath)
+		base = copyIn(base, currentWD, aCopy.SourcePaths[0], aCopy.DestPath)
 	}
 	outState = base.File(llb.Mkfile("/urunc.json", 0644, byteObj))
 	dt, err := outState.Marshal(context.TODO(), llb.LinuxAmd64)
