@@ -41,7 +41,7 @@ type CLIOpts struct {
 	ContainerFile    string // The Containerfile to be used for building the unikernel container
 }
 
-type BuildInstructions struct {
+type PackInstructions struct {
 	Base   string			  // The Base image to use
 	Copies []instructions.CopyCommand // Copy commands
 	Annots map[string]string	  // Annotations
@@ -109,8 +109,8 @@ func main() {
 	var base llb.State
 	//var hasBase bool = false
 	var outState llb.State
-	var buildInst BuildInstructions
-	buildInst.Annots = make(map[string]string)
+	var packInst PackInstructions
+	packInst.Annots = make(map[string]string)
 
 	cliOpts = parseCLIOpts()
 
@@ -144,19 +144,19 @@ func main() {
 		switch c := cmd.(type) {
 		case *instructions.Stage:
 			// Handle FROM
-			if buildInst.Base != "" {
+			if packInst.Base != "" {
 				fmt.Println("Multi-stage builds are not supported")
 				os.Exit(1)
 			}
-			buildInst.Base = c.BaseName
+			packInst.Base = c.BaseName
 		case *instructions.CopyCommand:
 			// Handle COPY
-			buildInst.Copies = append(buildInst.Copies, *c)
+			packInst.Copies = append(packInst.Copies, *c)
 		case *instructions.LabelCommand:
 			// Handle LABLE annotations
 			for _, kvp := range c.Labels {
 				annotKey := strings.Trim(kvp.Key, "\"")
-				buildInst.Annots[annotKey] = strings.Trim(kvp.Value, "\"")
+				packInst.Annots[annotKey] = strings.Trim(kvp.Value, "\"")
 			}
 		case instructions.Command:
 			// Catch all other commands
@@ -167,29 +167,29 @@ func main() {
 
 	}
 
-	for annot, val := range buildInst.Annots {
+	for annot, val := range packInst.Annots {
 		encoded := base64.StdEncoding.EncodeToString([]byte(val))
-		buildInst.Annots[annot] = string(encoded)
+		packInst.Annots[annot] = string(encoded)
 	}
-	byteObj, err := json.Marshal(buildInst.Annots)
+	byteObj, err := json.Marshal(packInst.Annots)
 	if err != nil {
 		fmt.Println("Failed to marshal urunc annotations: %v", err)
 		os.Exit(1)
 	}
-	if buildInst.Base == "scratch" {
+	if packInst.Base == "scratch" {
 		base = llb.Scratch()
-	} else if strings.HasPrefix(buildInst.Base, unikraftHub) {
+	} else if strings.HasPrefix(packInst.Base, unikraftHub) {
 		// Define the platform to qemu/amd64 so we cna pull unikraft images
 		platform := ocispecs.Platform{
 			OS:           "qemu",
 			Architecture: "amd64",
 		}
-		base = llb.Image(buildInst.Base, llb.Platform(platform),)
+		base = llb.Image(packInst.Base, llb.Platform(platform),)
 	} else {
-		base = llb.Image(buildInst.Base)
+		base = llb.Image(packInst.Base)
 	}
 
-	for _, aCopy := range buildInst.Copies {
+	for _, aCopy := range packInst.Copies {
 		base = copyIn(base, currentWD, aCopy.SourcePaths[0], aCopy.DestPath)
 	}
 	outState = base.File(llb.Mkfile("/urunc.json", 0644, byteObj))
