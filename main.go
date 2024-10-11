@@ -67,16 +67,58 @@ func parseCLIOpts() CLIOpts {
 	return opts
 }
 
-func getBuildBase(buildBase string) (*llb.State, error) {
-	var retBase llb.State
+func parseFile(file string) (*PackInstructions, error) {
+	var instr *PackInstructions
+	instr = new(PackInstructions)
+	instr.Annots = make(map[string]string)
 
-	if buildBase != "scratch" {
-		return nil, fmt.Errorf("Unsupported build base %s", buildBase)
+	CntrFileContent, err := ioutil.ReadFile(file)
+	if err != nil {
+		fmt.Printf("Failed to read %s: %v\n", file, err)
+		return nil, err
 	}
 
-	retBase = llb.Scratch()
+	// Parse the Dockerfile
+	r := bytes.NewReader(CntrFileContent)
+	parseRes, err := parser.Parse(r)
+	if err != nil {
+		fmt.Printf("Failed to parse  %s: %v\n", file, err)
+		return nil, err
+	}
 
-	return &retBase, nil
+	// Traverse Dockerfile commands
+	for _, child := range parseRes.AST.Children {
+		cmd, err := instructions.ParseInstruction(child)
+		if err != nil {
+			fmt.Printf("Failed to parse instruction %s: %v\n", child.Value, err)
+			return nil, err
+		}
+		switch c := cmd.(type) {
+		case *instructions.Stage:
+			// Handle FROM
+			if instr.Base != "" {
+				return nil, fmt.Errorf("Multi-stage builds are not supported")
+			}
+			instr.Base = c.BaseName
+		case *instructions.CopyCommand:
+			// Handle COPY
+			instr.Copies = append(instr.Copies, *c)
+		case *instructions.LabelCommand:
+			// Handle LABLE annotations
+			for _, kvp := range c.Labels {
+				annotKey := strings.Trim(kvp.Key, "\"")
+				instr.Annots[annotKey] = strings.Trim(kvp.Value, "\"")
+			}
+		case instructions.Command:
+			// Catch all other commands
+			fmt.Printf("UNsupported command%s\n", c.Name())
+		default:
+			fmt.Printf("%f is not a command type\n", c)
+		}
+
+	}
+
+	return instr, nil
 }
 
 func copyIn(base llb.State, from string, src string, dst string) llb.State {
@@ -90,27 +132,11 @@ func copyIn(base llb.State, from string, src string, dst string) llb.State {
 	return copyState
 }
 
-//func rumprunBuildBase() llb.State {
-//	var rumprunImg llb.State
-//
-//	// Define the platform (e.g., windows/amd64)
-//	platform := ocispecs.Platform{
-//	OS:           "qemu",
-//	Architecture: "amd64",
-//	}
-//	rumprunImg = llb.Image("unikraft.org/nginx:1.15",
-//			llb.Platform(platform),)
-//
-//	return rumprunImg
-//}
-
 func main() {
 	var cliOpts CLIOpts
 	var base llb.State
-	//var hasBase bool = false
 	var outState llb.State
-	var packInst PackInstructions
-	packInst.Annots = make(map[string]string)
+	var packInst *PackInstructions
 
 	cliOpts = parseCLIOpts()
 
@@ -120,53 +146,11 @@ func main() {
 		os.Exit(1)
 	}
 
-	CntrFileContent, err := ioutil.ReadFile(cliOpts.ContainerFile)
+	packInst, err := parseFile(cliOpts.ContainerFile)
 	if err != nil {
-		fmt.Println("Failed to read %s: %v", cliOpts.ContainerFile, err)
+		fmt.Println("Error parsing packing instructions", err)
 		os.Exit(1)
 	}
-
-	// Parse the Dockerfile
-	r := bytes.NewReader(CntrFileContent)
-	parseRes, err := parser.Parse(r)
-	if err != nil {
-		fmt.Println("Failed to parse  %s: %v", cliOpts.ContainerFile, err)
-		os.Exit(1)
-	}
-
-	// Traverse Dockerfile commands
-	for _, child := range parseRes.AST.Children {
-		cmd, err := instructions.ParseInstruction(child)
-		if err != nil {
-			fmt.Println("Failed to parse instruction %s: %v", child.Value, err)
-			os.Exit(1)
-		}
-		switch c := cmd.(type) {
-		case *instructions.Stage:
-			// Handle FROM
-			if packInst.Base != "" {
-				fmt.Println("Multi-stage builds are not supported")
-				os.Exit(1)
-			}
-			packInst.Base = c.BaseName
-		case *instructions.CopyCommand:
-			// Handle COPY
-			packInst.Copies = append(packInst.Copies, *c)
-		case *instructions.LabelCommand:
-			// Handle LABLE annotations
-			for _, kvp := range c.Labels {
-				annotKey := strings.Trim(kvp.Key, "\"")
-				packInst.Annots[annotKey] = strings.Trim(kvp.Value, "\"")
-			}
-		case instructions.Command:
-			// Catch all other commands
-			fmt.Printf("UNsupported command%s\n", c.Name())
-		default:
-			fmt.Printf("%f is not a command type\n", c)
-		}
-
-	}
-
 	for annot, val := range packInst.Annots {
 		encoded := base64.StdEncoding.EncodeToString([]byte(val))
 		packInst.Annots[annot] = string(encoded)
