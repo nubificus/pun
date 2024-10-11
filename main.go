@@ -67,22 +67,17 @@ func parseCLIOpts() CLIOpts {
 	return opts
 }
 
-func parseFile(file string) (*PackInstructions, error) {
+func parseFile(fileBytes []byte) (*PackInstructions, error) {
 	var instr *PackInstructions
 	instr = new(PackInstructions)
 	instr.Annots = make(map[string]string)
 
-	CntrFileContent, err := ioutil.ReadFile(file)
-	if err != nil {
-		fmt.Printf("Failed to read %s: %v\n", file, err)
-		return nil, err
-	}
-
 	// Parse the Dockerfile
-	r := bytes.NewReader(CntrFileContent)
+	r := bytes.NewReader(fileBytes)
+
 	parseRes, err := parser.Parse(r)
 	if err != nil {
-		fmt.Printf("Failed to parse  %s: %v\n", file, err)
+		fmt.Printf("Failed to parse file: %v\n", err)
 		return nil, err
 	}
 
@@ -125,7 +120,7 @@ func copyIn(base llb.State, from string, src string, dst string) llb.State {
 	var copyState llb.State
 	var localSrc llb.State
 
-	localSrc = llb.Local("client-WD")
+	localSrc = llb.Local(currentWD)
 	copyState = base.File(llb.Copy(localSrc, src, dst, &llb.CopyInfo{
 				CreateDestPath: true,}))
 
@@ -146,7 +141,13 @@ func main() {
 		os.Exit(1)
 	}
 
-	packInst, err := parseFile(cliOpts.ContainerFile)
+	CntrFileContent, err := ioutil.ReadFile(cliOpts.ContainerFile)
+	if err != nil {
+		fmt.Printf("Failed to read %s: %v\n", cliOpts.ContainerFile, err)
+		os.Exit(1)
+	}
+
+	packInst, err = parseFile(CntrFileContent)
 	if err != nil {
 		fmt.Println("Error parsing packing instructions", err)
 		os.Exit(1)
