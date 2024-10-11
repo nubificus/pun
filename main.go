@@ -32,9 +32,9 @@ import (
 )
 
 const (
-	currentWD          string = "client-WD"
 	unikraftKernelPath string = "/unikraft/bin/kernel"
 	unikraftHub        string = "unikraft.org"
+	packContextName    string = "context"
 )
 
 type CLIOpts struct {
@@ -120,7 +120,7 @@ func copyIn(base llb.State, from string, src string, dst string) llb.State {
 	var copyState llb.State
 	var localSrc llb.State
 
-	localSrc = llb.Local(currentWD)
+	localSrc = llb.Local(packContextName)
 	copyState = base.File(llb.Copy(localSrc, src, dst, &llb.CopyInfo{
 				CreateDestPath: true,}))
 
@@ -175,7 +175,7 @@ func main() {
 	}
 
 	for _, aCopy := range packInst.Copies {
-		base = copyIn(base, currentWD, aCopy.SourcePaths[0], aCopy.DestPath)
+		base = copyIn(base, packContextName, aCopy.SourcePaths[0], aCopy.DestPath)
 	}
 	outState = base.File(llb.Mkfile("/urunc.json", 0644, byteObj))
 	dt, err := outState.Marshal(context.TODO(), llb.LinuxAmd64)

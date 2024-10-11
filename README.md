@@ -25,14 +25,14 @@ to buildkit
 As long as buildkit is installed in our system, we can package any unikernel
 with the following command:
 ```
-./pun -f Containerfile | sudo buildctl build ... --local client-WD=<path_to_local_context> --output type=<type>,<type-specific-args>
+./pun -f Containerfile | sudo buildctl build ... --local context=<path_to_local_context> --output type=<type>,<type-specific-args>
 ```
 
 `pun` takes a single argument and that is the `Containerfile` a
 Dockerfile-syntax file with the packaging instructions.
 
 Regarding the buildctl arguments:
-- `--local client-WD` specifies the directory where the user wants to set the
+- `--local context` specifies the directory where the user wants to set the
   local context. It is similar to the build context in the docker build command.
 THerefore, if we specify any `COPY` instructions in the `Containerfile`, the
 paths will be relative to this argument.
@@ -45,7 +45,7 @@ paths will be relative to this argument.
 
 For instance:
 ```
-./pun -f Containerfile | sudo buildctl build ... --local client-WD=/home/ubuntu/unikernels/ --output type=docker,name=harbor.nbfc.io/nubificus/urunc/pun:latest | sudo docker load
+./pun -f Containerfile | sudo buildctl build ... --local context=/home/ubuntu/unikernels/ --output type=docker,name=harbor.nbfc.io/nubificus/urunc/pun:latest | sudo docker load
 ```
 
 ## The Containerfile format
@@ -80,7 +80,7 @@ LABEL "com.urunc.unikernel.hypervisor"="hvt"
 
 We can then build the image with the following command:
 ```
-./pun -f Containerfile | sudo buildctl build ... --local client-WD=${PWD} --output type=docker,name=harbor.nbfc.io/nubificus/urunc/redis-rumprun-hvt:test | sudo docker load
+./pun -f Containerfile | sudo buildctl build ... --local context=${PWD} --output type=docker,name=harbor.nbfc.io/nubificus/urunc/redis-rumprun-hvt:test | sudo docker load
 ```
 
 The image will get loaded in the local docker registry.
@@ -102,7 +102,7 @@ LABEL "com.urunc.unikernel.hypervisor"="qemu"
 
 We can then build the image with the following command:
 ```
-./pun -f Containerfile | sudo buildctl build ... --local client-WD=${PWD} --output type=docker,name=harbor.nbfc.io/nubificus/urunc/nginx-unikraft-qemu:test | sudo docker load
+./pun -f Containerfile | sudo buildctl build ... --local context=${PWD} --output type=docker,name=harbor.nbfc.io/nubificus/urunc/nginx-unikraft-qemu:test | sudo docker load
 ```
 
 The image will get loaded in the local docker registry.
