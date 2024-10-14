@@ -39,6 +39,7 @@ const (
 	unikraftHub        string = "unikraft.org"
 	packContextName    string = "context"
 	clientOptFilename  string = "filename"
+	uruncJSONPath      string = "/urunc.json"
 )
 
 type CLIOpts struct {
@@ -137,9 +138,51 @@ func copyIn(base llb.State, from string, src string, dst string) llb.State {
 	return copyState
 }
 
-func punBuilder(ctx context.Context, c client.Client) (*client.Result, error) {
+func constructLLB(instr PackInstructions) (*llb.Definition, error) {
 	var base llb.State
+	uruncJSON := make(map[string]string)
 
+	// Create urunc.json file, since annotations do not reach urunc
+	for annot, val := range instr.Annots {
+		encoded := base64.StdEncoding.EncodeToString([]byte(val))
+		uruncJSON[annot] = string(encoded)
+	}
+	uruncJSONBytes, err := json.Marshal(uruncJSON)
+	if err != nil {
+		return nil, fmt.Errorf("Failed to marshal urunc json: %v", err)
+	}
+
+	// Set the base image where we will pack the unikernel
+	if instr.Base == "scratch" {
+		base = llb.Scratch()
+	} else if strings.HasPrefix(instr.Base, unikraftHub) {
+		// Define the platform to qemu/amd64 so we cna pull unikraft images
+		platform := ocispecs.Platform{
+			OS:           "qemu",
+			Architecture: "amd64",
+		}
+		base = llb.Image(instr.Base, llb.Platform(platform),)
+	} else {
+		base = llb.Image(instr.Base)
+	}
+
+	// Perform any copies inside the image
+	for _, aCopy := range instr.Copies {
+		base = copyIn(base, packContextName, aCopy.SourcePaths[0], aCopy.DestPath)
+	}
+
+	// Create the urunc.json file in the rootfs
+	base = base.File(llb.Mkfile(uruncJSONPath, 0644, uruncJSONBytes))
+
+	dt, err := base.Marshal(context.TODO(), llb.LinuxAmd64)
+	if err != nil {
+		return nil, fmt.Errorf("Failed to marshal LLB state: %v", err)
+	}
+
+	return dt, nil
+}
+
+func punBuilder(ctx context.Context, c client.Client) (*client.Result, error) {
 	packOpts := c.BuildOpts().Opts
 	packFile := packOpts[clientOptFilename]
 	if packFile == "" {
@@ -171,36 +214,13 @@ func punBuilder(ctx context.Context, c client.Client) (*client.Result, error) {
 	if err != nil {
 		return nil, fmt.Errorf("Error parsing packing instructions", err)
 	}
-	for annot, val := range packInst.Annots {
-		encoded := base64.StdEncoding.EncodeToString([]byte(val))
-		packInst.Annots[annot] = string(encoded)
-	}
-	byteObj, err := json.Marshal(packInst.Annots)
+
+	dt, err := constructLLB(*packInst)
 	if err != nil {
-		fmt.Println("Failed to marshal urunc annotations: %v", err)
+		fmt.Printf("Failed to create LLB definition : %v\n", err)
 		os.Exit(1)
 	}
-	if packInst.Base == "scratch" {
-		base = llb.Scratch()
-	} else if strings.HasPrefix(packInst.Base, unikraftHub) {
-		// Define the platform to qemu/amd64 so we cna pull unikraft images
-		platform := ocispecs.Platform{
-			OS:           "qemu",
-			Architecture: "amd64",
-		}
-		base = llb.Image(packInst.Base, llb.Platform(platform),)
-	} else {
-		base = llb.Image(packInst.Base)
-	}
 
-	for _, aCopy := range packInst.Copies {
-		base = copyIn(base, packContextName, aCopy.SourcePaths[0], aCopy.DestPath)
-	}
-	outState := base.File(llb.Mkfile("/urunc.json", 0644, byteObj))
-	dt, err := outState.Marshal(context.TODO(), llb.LinuxAmd64)
-	if err != nil {
-		return nil, fmt.Errorf("Failed to marshall LLB: %v",err)
-	}
 	result, err := c.Solve(ctx, client.SolveRequest{
 		Definition: dt.ToPB(),
 	})
@@ -212,8 +232,6 @@ func punBuilder(ctx context.Context, c client.Client) (*client.Result, error) {
 
 func main() {
 	var cliOpts CLIOpts
-	var base llb.State
-	var outState llb.State
 	var packInst *PackInstructions
 
 	cliOpts = parseCLIOpts()
@@ -244,35 +262,12 @@ func main() {
 		fmt.Println("Error parsing packing instructions", err)
 		os.Exit(1)
 	}
-	for annot, val := range packInst.Annots {
-		encoded := base64.StdEncoding.EncodeToString([]byte(val))
-		packInst.Annots[annot] = string(encoded)
-	}
-	byteObj, err := json.Marshal(packInst.Annots)
+
+	dt, err := constructLLB(*packInst)
 	if err != nil {
-		fmt.Println("Failed to marshal urunc annotations: %v", err)
+		fmt.Printf("Failed to create LLB definition : %v\n", err)
 		os.Exit(1)
 	}
-	if packInst.Base == "scratch" {
-		base = llb.Scratch()
-	} else if strings.HasPrefix(packInst.Base, unikraftHub) {
-		// Define the platform to qemu/amd64 so we cna pull unikraft images
-		platform := ocispecs.Platform{
-			OS:           "qemu",
-			Architecture: "amd64",
-		}
-		base = llb.Image(packInst.Base, llb.Platform(platform),)
-	} else {
-		base = llb.Image(packInst.Base)
-	}
 
-	for _, aCopy := range packInst.Copies {
-		base = copyIn(base, packContextName, aCopy.SourcePaths[0], aCopy.DestPath)
-	}
-	outState = base.File(llb.Mkfile("/urunc.json", 0644, byteObj))
-	dt, err := outState.Marshal(context.TODO(), llb.LinuxAmd64)
-	if err != nil {
-		panic(err)
-	}
 	llb.WriteTo(dt, os.Stdout)
 }
