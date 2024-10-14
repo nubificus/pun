@@ -42,7 +42,11 @@ const (
 )
 
 type CLIOpts struct {
-	ContainerFile    string // The Containerfile to be used for building the unikernel container
+	// The Containerfile to be used for building the unikernel container
+	ContainerFile  string
+	// Choose the execution mode. If set, then pun will not act as a
+	// buidlkit frontend. Instead it will just print the LLB.
+	PrintLLB       bool
 }
 
 type PackInstructions struct {
@@ -57,6 +61,7 @@ func usage() {
 	fmt.Printf("%s [<args>]\n\n", os.Args[0])
 	fmt.Println("Supported command line arguments")
 	fmt.Println("\t-f, --file filename \t\tPath to the Containerfile")
+	fmt.Println("\t--LLB bool \t\t\tPath to the Containerfile")
 }
 
 func parseCLIOpts() CLIOpts {
@@ -64,6 +69,7 @@ func parseCLIOpts() CLIOpts {
 
 	flag.StringVar(&opts.ContainerFile, "file", "", "Path to the Containerfile")
 	flag.StringVar(&opts.ContainerFile, "f", "", "Path to the Containerfile")
+	flag.BoolVar(&opts.PrintLLB, "LLB", false, "Print the LLB, instead of acting as a frontend")
 
 	flag.Usage = usage
 	flag.Parse()
@@ -76,9 +82,9 @@ func parseFile(fileBytes []byte) (*PackInstructions, error) {
 	instr = new(PackInstructions)
 	instr.Annots = make(map[string]string)
 
-	// Parse the Dockerfile
 	r := bytes.NewReader(fileBytes)
 
+	// Parse the Dockerfile
 	parseRes, err := parser.Parse(r)
 	if err != nil {
 		fmt.Printf("Failed to parse file: %v\n", err)
@@ -210,14 +216,16 @@ func main() {
 	var outState llb.State
 	var packInst *PackInstructions
 
-	ctx := appcontext.Context()
-	if err := grpcclient.RunFromEnvironment(ctx, punBuilder); err != nil {
-		fmt.Printf("Could not start grpcclient: %v\n", err)
-		os.Exit(1)
-	}
-	return
-
 	cliOpts = parseCLIOpts()
+
+	if !cliOpts.PrintLLB {
+		ctx := appcontext.Context()
+		if err := grpcclient.RunFromEnvironment(ctx, punBuilder); err != nil {
+			fmt.Printf("Could not start grpcclient: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
 
 	if cliOpts.ContainerFile == "" {
 		fmt.Println("Please specify the Containerfile")
