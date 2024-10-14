@@ -182,14 +182,10 @@ func constructLLB(instr PackInstructions) (*llb.Definition, error) {
 	return dt, nil
 }
 
-func punBuilder(ctx context.Context, c client.Client) (*client.Result, error) {
-	packOpts := c.BuildOpts().Opts
-	packFile := packOpts[clientOptFilename]
-	if packFile == "" {
-		return nil, fmt.Errorf("%s: was not provided", clientOptFilename)
-	}
-	fileSrc := llb.Local(packContextName, llb.IncludePatterns([]string {packFile}),
-				llb.WithCustomName("Internal:Fetch-" + packFile))
+func readFileFromLLB(ctx context.Context, c client.Client, filename string) ([]byte, error) {
+	// Get the file from client's context
+	fileSrc := llb.Local(packContextName, llb.IncludePatterns([]string {filename}),
+				llb.WithCustomName("Internal:Read-" + filename))
 	fileDef, err := fileSrc.Marshal(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("Failed to marshal state for fetching %s: %w", clientOptFilename, err)
@@ -204,29 +200,55 @@ func punBuilder(ctx context.Context, c client.Client) (*client.Result, error) {
 	if err != nil {
 		return nil, fmt.Errorf("Failed to get ref from solve resutl for fetching %s: %w", clientOptFilename, err)
 	}
+
+	// Read the content of the file
 	fileBytes, err := fileRef.ReadFile(ctx, client.ReadRequest{
-		Filename: packFile,
+		Filename: filename,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("Failed to read %s: %w", clientOptFilename, err)
 	}
+
+	return fileBytes, nil
+}
+
+func punBuilder(ctx context.Context, c client.Client) (*client.Result, error) {
+	// Get the Build options from buildkit
+	packOpts := c.BuildOpts().Opts
+
+	// Get the file that contains the instructions
+	packFile := packOpts[clientOptFilename]
+	if packFile == "" {
+		return nil, fmt.Errorf("%s: was not provided", clientOptFilename)
+	}
+
+	// Fetch and read contents of user-specified file in build context
+	fileBytes, err := readFileFromLLB(ctx, c, packFile)
+	if err != nil {
+		return nil, fmt.Errorf("Failed to fetch and read %s: %w", clientOptFilename, err)
+	}
+
+	// Parse packing instructions
 	packInst, err := parseFile(fileBytes)
 	if err != nil {
 		return nil, fmt.Errorf("Error parsing packing instructions", err)
 	}
 
+	// Create the LLB definiton
 	dt, err := constructLLB(*packInst)
 	if err != nil {
 		fmt.Printf("Failed to create LLB definition : %v\n", err)
 		os.Exit(1)
 	}
 
+	// Pass LLB to buildkit
 	result, err := c.Solve(ctx, client.SolveRequest{
 		Definition: dt.ToPB(),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("Failed to resolve LLB: %v",err)
 	}
+
 	return result, nil
 }
 
@@ -237,6 +259,7 @@ func main() {
 	cliOpts = parseCLIOpts()
 
 	if !cliOpts.PrintLLB {
+		// Run as buildkit frontend
 		ctx := appcontext.Context()
 		if err := grpcclient.RunFromEnvironment(ctx, punBuilder); err != nil {
 			fmt.Printf("Could not start grpcclient: %v\n", err)
@@ -245,6 +268,7 @@ func main() {
 		return
 	}
 
+	// Normal local execution to print LLB
 	if cliOpts.ContainerFile == "" {
 		fmt.Println("Please specify the Containerfile")
 		fmt.Println("Use -h or --help for more info")
@@ -257,17 +281,20 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Parse file with packaging instructions
 	packInst, err = parseFile(CntrFileContent)
 	if err != nil {
 		fmt.Println("Error parsing packing instructions", err)
 		os.Exit(1)
 	}
 
+	// Create the LLB definition
 	dt, err := constructLLB(*packInst)
 	if err != nil {
 		fmt.Printf("Failed to create LLB definition : %v\n", err)
 		os.Exit(1)
 	}
 
+	// Print the LLB to give it as input in buildctl
 	llb.WriteTo(dt, os.Stdout)
 }
