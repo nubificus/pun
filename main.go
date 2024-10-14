@@ -25,7 +25,10 @@ import (
 	"strings"
 	"io/ioutil"
 
+	"github.com/moby/buildkit/frontend/gateway/grpcclient"
+	"github.com/moby/buildkit/util/appcontext"
 	"github.com/moby/buildkit/client/llb"
+	"github.com/moby/buildkit/frontend/gateway/client"
 	ocispecs "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/moby/buildkit/frontend/dockerfile/instructions"
 	"github.com/moby/buildkit/frontend/dockerfile/parser"
@@ -35,6 +38,7 @@ const (
 	unikraftKernelPath string = "/unikraft/bin/kernel"
 	unikraftHub        string = "unikraft.org"
 	packContextName    string = "context"
+	clientOptFilename  string = "filename"
 )
 
 type CLIOpts struct {
@@ -127,11 +131,91 @@ func copyIn(base llb.State, from string, src string, dst string) llb.State {
 	return copyState
 }
 
+func punBuilder(ctx context.Context, c client.Client) (*client.Result, error) {
+	var base llb.State
+
+	packOpts := c.BuildOpts().Opts
+	packFile := packOpts[clientOptFilename]
+	if packFile == "" {
+		return nil, fmt.Errorf("%s: was not provided", clientOptFilename)
+	}
+	fileSrc := llb.Local(packContextName, llb.IncludePatterns([]string {packFile}),
+				llb.WithCustomName("Internal:Fetch-" + packFile))
+	fileDef, err := fileSrc.Marshal(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("Failed to marshal state for fetching %s: %w", clientOptFilename, err)
+	}
+	fileRes, err := c.Solve(ctx, client.SolveRequest{
+		Definition: fileDef.ToPB(),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("Failed to solve state for fetching %s: %w", clientOptFilename, err)
+	}
+	fileRef, err := fileRes.SingleRef()
+	if err != nil {
+		return nil, fmt.Errorf("Failed to get ref from solve resutl for fetching %s: %w", clientOptFilename, err)
+	}
+	fileBytes, err := fileRef.ReadFile(ctx, client.ReadRequest{
+		Filename: packFile,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("Failed to read %s: %w", clientOptFilename, err)
+	}
+	packInst, err := parseFile(fileBytes)
+	if err != nil {
+		return nil, fmt.Errorf("Error parsing packing instructions", err)
+	}
+	for annot, val := range packInst.Annots {
+		encoded := base64.StdEncoding.EncodeToString([]byte(val))
+		packInst.Annots[annot] = string(encoded)
+	}
+	byteObj, err := json.Marshal(packInst.Annots)
+	if err != nil {
+		fmt.Println("Failed to marshal urunc annotations: %v", err)
+		os.Exit(1)
+	}
+	if packInst.Base == "scratch" {
+		base = llb.Scratch()
+	} else if strings.HasPrefix(packInst.Base, unikraftHub) {
+		// Define the platform to qemu/amd64 so we cna pull unikraft images
+		platform := ocispecs.Platform{
+			OS:           "qemu",
+			Architecture: "amd64",
+		}
+		base = llb.Image(packInst.Base, llb.Platform(platform),)
+	} else {
+		base = llb.Image(packInst.Base)
+	}
+
+	for _, aCopy := range packInst.Copies {
+		base = copyIn(base, packContextName, aCopy.SourcePaths[0], aCopy.DestPath)
+	}
+	outState := base.File(llb.Mkfile("/urunc.json", 0644, byteObj))
+	dt, err := outState.Marshal(context.TODO(), llb.LinuxAmd64)
+	if err != nil {
+		return nil, fmt.Errorf("Failed to marshall LLB: %v",err)
+	}
+	result, err := c.Solve(ctx, client.SolveRequest{
+		Definition: dt.ToPB(),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("Failed to resolve LLB: %v",err)
+	}
+	return result, nil
+}
+
 func main() {
 	var cliOpts CLIOpts
 	var base llb.State
 	var outState llb.State
 	var packInst *PackInstructions
+
+	ctx := appcontext.Context()
+	if err := grpcclient.RunFromEnvironment(ctx, punBuilder); err != nil {
+		fmt.Printf("Could not start grpcclient: %v\n", err)
+		os.Exit(1)
+	}
+	return
 
 	cliOpts = parseCLIOpts()
 
