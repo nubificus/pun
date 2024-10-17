@@ -25,6 +25,7 @@ import (
 	"strings"
 	"io/ioutil"
 
+	"github.com/moby/buildkit/exporter/containerimage/exptypes"
 	"github.com/moby/buildkit/frontend/gateway/grpcclient"
 	"github.com/moby/buildkit/util/appcontext"
 	"github.com/moby/buildkit/client/llb"
@@ -212,6 +213,44 @@ func readFileFromLLB(ctx context.Context, c client.Client, filename string) ([]b
 	return fileBytes, nil
 }
 
+func annotateRes(annots map[string]string, res *client.Result) (*client.Result, error) {
+	ref, err := res.SingleRef()
+	if err != nil {
+		return nil, fmt.Errorf("Failed te get reference of LLB solve result : %v",err)
+	}
+
+	//uruncJSON := make(map[string]string)
+
+	//// Create urunc.json file, since annotations do not reach urunc
+	//for annot, val := range packInst.Annots {
+	//	encoded := base64.StdEncoding.EncodeToString([]byte(val))
+	//	uruncJSON[annot] = string(encoded)
+	//}
+	config := ocispecs.Image{
+		Platform: ocispecs.Platform{
+			Architecture: "amd64",
+			OS:           "linux",
+		},
+		RootFS: ocispecs.RootFS{
+			Type: "layers",
+		},
+		Config: ocispecs.ImageConfig{
+			WorkingDir: "/",
+			Entrypoint: []string{"/hello"},
+			Labels:     annots,
+		},
+	}
+
+	uruncJSONBytes, err := json.Marshal(config)
+	if err != nil {
+		return nil, fmt.Errorf("Failed to marshal urunc json: %v", err)
+	}
+	res.AddMeta(exptypes.ExporterImageConfigKey, uruncJSONBytes)
+	res.SetRef(ref)
+
+	return res, nil
+}
+
 func punBuilder(ctx context.Context, c client.Client) (*client.Result, error) {
 	// Get the Build options from buildkit
 	packOpts := c.BuildOpts().Opts
@@ -247,6 +286,12 @@ func punBuilder(ctx context.Context, c client.Client) (*client.Result, error) {
 	})
 	if err != nil {
 		return nil, fmt.Errorf("Failed to resolve LLB: %v",err)
+	}
+
+	// Add annotations and Labels in output image
+	result, err = annotateRes(packInst.Annots, result)
+	if err != nil {
+		return nil, fmt.Errorf("Failed to annotate final image: %v",err)
 	}
 
 	return result, nil
