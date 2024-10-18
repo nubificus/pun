@@ -82,9 +82,49 @@ order to produce images for `urunc`. Therefore, currently only the following
 instructions are supported:
 - `FROM`: Specifies the base image. It can be any image or just `scratch`
 - `COPY`: Copies local files inside the image as a new layer.
-- 'LABEL': Specifies annotations for the image.
+- `LABEL`: Specifies annotations for the image.
 
 All the other instructions will get ignored.
+
+## Annotations
+
+The main motivation behind `pun` is to create OCI images with specific
+annotations.  For that purpose, `pun` will treat all Labels defined in the
+Containerfile as annotations. In particular, the annotations will be stored in
+the image manifest.
+
+### Docker and annotations
+
+In order to make use of this feature the `pun` should be used from a tool that
+can export the image in the OCI format. According to [docker's
+documentation](https://docs.docker.com/build/exporters/oci-docker/), the
+default docker driver does not support exports in the OCI format. Instead,
+someone needs to use a [Docker container build
+driver](https://docs.docker.com/build/builders/drivers/docker-container/).
+Another way to use `pun` and export the image in the OCI format is through
+[buildctl](https://github.com/moby/buildkit?tab=readme-ov-file#output). In both
+cases, the annotations will remain in the image setting the following options:
+1. Choose image or OCI as an output type.
+2. Use the `oci-mediatypes=true` option
+3. make sure to immediately push the image in a registry.
+
+Thereofore, a docker builx command could be:
+```
+docker buildx build --builder=<container-build-driver>  --output "type=image,oci-mediatypes=true" -f <path-to-Containerfile>r -t <image-name> --push=true <path-tobuild-context>
+```
+
+Similarly a buildctl command could be:
+ ```
+buildctl build --frontend gateway.v0 --opt source=harbor.nbfc.io/nubificus/urunc/pun/llb:latest --output "type=image,name=<image-name>,oci-mediatypes=true,push=true" --local context=<path-to-build-context> --local dockerfile=<path-to-dir-containing-Containerfile> -opt filename=<name-of-Containerfile>
+ ```
+
+Furthermore, it is important to note that the Docker Engine does not support
+annotations. For more information, take a look in [docker's
+documentation](https://docs.docker.com/build/metadata/annotations/#add-annotations%CE%B5%CE%AF%CE%BD%CE%B1%CE%B9).
+Therefore, pulling any image built with ` pun` that has annotations in a local
+docker ENgine registry will result to losing all the annotations. This is the
+reason that we need to push the output image immediately after build and not
+store it locally.
 
 ## Examples
 
@@ -109,8 +149,12 @@ We can then build the image with the following command:
 ```
 docker build -f Containerfile -t harbor.nbfc.io/nubificus/urunc/redis-rumprun-hvt:test .
 ```
+The image will get loaded in the local docker registry. If we want to build with [annotations](#Docker-and-annotations)
+```
+docker buildx build --builder=<container-build-driver>  --output "type=image,oci-mediatypes=true" -f Containerfile -t harbor.nbfc.io/nubificus/urunc/redis-rumprun-hvt:test --push=true .
+```
 
-The image will get loaded in the local docker registry.
+THe image will get pushed in the registry.
 
 ### Packaging a rumprun unikernel with `pun` as buildkit's frontend
 
@@ -130,10 +174,14 @@ LABEL "com.urunc.unikernel.hypervisor"="qemu"
 
 We can then build the image with the following command:
 ```
-docker build -f Containerfile -t harbor.nbfc.io/nubificus/urunc/redis-rumprun-hvt:test .
+docker build -f Containerfile -t harbor.nbfc.io/nubificus/urunc/nginx-unikraft-qemu:test .
+```
+The image will get loaded in the local docker registry. If we want to build with [annotations](#Docker-and-annotations):
+```
+docker buildx build --builder=<container-build-driver>  --output "type=image,oci-mediatypes=true" -f Containerfile -t harbor.nbfc.io/nubificus/urunc/nginx-unikraft-qemu:test --push=true .
 ```
 
-The image will get loaded in the local docker registry.
+The image will get pushed in the registry.
 
 ### Packaging a rumprun unikernel with `pun` with buildctl
 
@@ -154,9 +202,14 @@ LABEL "com.urunc.unikernel.hypervisor"="hvt"
 We can then build the image with the following command:
 ```
 ./pun -f Containerfile | sudo buildctl build ... --local context=${PWD} --output type=docker,name=harbor.nbfc.io/nubificus/urunc/redis-rumprun-hvt:test | sudo docker load
+--output "type=image,name=<image-name>,oci-mediatypes=true,push=true"
+```
+The image will get loaded in the local docker registry. If we want to build with [annotations](#Docker-and-annotations):
+```
+./pun -f Containerfile | sudo buildctl build ... --local context=${PWD} --output "type=image,name=harbor.nbfc.io/nubificus/urunc/redis-rumprun-hvt:test,oci-mediatypes=true,push=true"
 ```
 
-The image will get loaded in the local docker registry.
+The image will get pushed in the registry.
 
 ### Packaging a unikraft unikernel with `pun` with buildctl
 
@@ -177,5 +230,9 @@ We can then build the image with the following command:
 ```
 ./pun -f Containerfile | sudo buildctl build ... --local context=${PWD} --output type=docker,name=harbor.nbfc.io/nubificus/urunc/nginx-unikraft-qemu:test | sudo docker load
 ```
+The image will get loaded in the local docker registry. If we want to build with [annotations](#Docker-and-annotations):
+```
+./pun -f Containerfile | sudo buildctl build ... --local context=${PWD} --output "type=image,name=harbor.nbfc.io/nubificus/urunc/nginx-unikraft-qemu:test,oci-mediatypes=true,push=true"
+```
 
-The image will get loaded in the local docker registry.
+The image will get pushed in the registry.
