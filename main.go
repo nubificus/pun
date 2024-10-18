@@ -219,13 +219,6 @@ func annotateRes(annots map[string]string, res *client.Result) (*client.Result, 
 		return nil, fmt.Errorf("Failed te get reference of LLB solve result : %v",err)
 	}
 
-	//uruncJSON := make(map[string]string)
-
-	//// Create urunc.json file, since annotations do not reach urunc
-	//for annot, val := range packInst.Annots {
-	//	encoded := base64.StdEncoding.EncodeToString([]byte(val))
-	//	uruncJSON[annot] = string(encoded)
-	//}
 	config := ocispecs.Image{
 		Platform: ocispecs.Platform{
 			Architecture: "amd64",
@@ -236,7 +229,7 @@ func annotateRes(annots map[string]string, res *client.Result) (*client.Result, 
 		},
 		Config: ocispecs.ImageConfig{
 			WorkingDir: "/",
-			Entrypoint: []string{"/hello"},
+			Entrypoint: []string{"/hello2"},
 			Labels:     annots,
 		},
 	}
@@ -246,6 +239,9 @@ func annotateRes(annots map[string]string, res *client.Result) (*client.Result, 
 		return nil, fmt.Errorf("Failed to marshal urunc json: %v", err)
 	}
 	res.AddMeta(exptypes.ExporterImageConfigKey, uruncJSONBytes)
+	for annot, val := range annots {
+		res.AddMeta(exptypes.AnnotationManifestKey(nil, annot), []byte(val))
+	}
 	res.SetRef(ref)
 
 	return res, nil
@@ -276,8 +272,7 @@ func punBuilder(ctx context.Context, c client.Client) (*client.Result, error) {
 	// Create the LLB definiton
 	dt, err := constructLLB(*packInst)
 	if err != nil {
-		fmt.Printf("Failed to create LLB definition : %v\n", err)
-		os.Exit(1)
+		return nil, fmt.Errorf("Failed to create LLB definition : %v\n", err)
 	}
 
 	// Pass LLB to buildkit
