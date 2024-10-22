@@ -33,7 +33,7 @@ jobs:
           base: 'main'
           filters: |
             dockerfile:
-              - '*Dockerfile'
+              - 'Dockerfile'
             go:
               - '*.go'
               - 'Makefile'
