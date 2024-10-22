@@ -35,10 +35,10 @@ jobs:
         uses: dorny/paths-filter@v3
         with:
           list-files: 'json'
-          base: 'feat_nbfc'
+          #base: 'feat_nbfc'
           filters: |
             dockerfile:
-              - '*Dockerfile'
+              - 'Dockerfile'
             go:
               - '*.go'
               - 'Makefile'
@@ -58,5 +58,8 @@ jobs:
     with:
       runner: '["go", "dind", "2204"]'
       runner-archs: '["amd64", "arm64"]'
-      dockerfiles: ${{ needs.get-changed-files.outputs.dockerfile_files }}
+      dockerfiles: ${{ toJSON(fromJSON(needs.get-changed-files.outputs.dockerfile_files || '[]')) }}
+
+
+
 
