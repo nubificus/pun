@@ -168,7 +168,7 @@ jobs:
           echo "$amend_command"
 
           # Create the docker manifest with the amend command
-          docker manifest create ${{ env.REGISTRY }}/${{ github.repository }}/:${{ env.TAG }} $amend_command
+          docker manifest create ${{ env.REGISTRY }}/${{ github.repository }}:${{ env.TAG }} $amend_command
 
           # Optionally push the manifest (comment out if not needed)
           #          docker manifest push ${{ env.REGISTRY }}/${{ github.repository }}/${{ matrix.dockerfile }}:${{ env.TAG }}

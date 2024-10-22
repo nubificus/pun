@@ -4,7 +4,7 @@ on:
   pull_request:
     branches: ["main"]
   push:
-    branches: ["main", "staging"]
+    branches: ["main", "staging", "feat_test_changes"]
   workflow_dispatch: # build on demand
   #schedule:
   #  - cron: "43 6 * * 0" # build every Sunday at 6:43 AM UTC
@@ -43,11 +43,13 @@ jobs:
         run: |
           echo "Files in dockerfile: ${{ steps.filter.outputs.dockerfile_files }}"
           echo "Files in go: ${{ steps.filter.outputs.go_files }}"
+          echo "dockerfile: ${{ steps.filter.outputs.dockerfile}}"
+          echo "go: ${{ steps.filter.outputs.go}}"
 
   build-pun:
     needs: [get-changed-files]
     name: Pun
-    if: ${{ needs.get-changed-files.outputs.go || needs.get-changed-files.outputs.dockerfile }}
+    if: ${{ needs.get-changed-files.outputs.go == 'true' || needs.get-changed-files.outputs.dockerfile == 'true' }}
     uses: ./.github/workflows/build.yml
     secrets: inherit
     with:
