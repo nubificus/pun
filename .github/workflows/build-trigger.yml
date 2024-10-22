@@ -37,7 +37,7 @@ jobs:
             version:
               - '*VERSION'
             dockerfile:
-              - '*Dockerfile'
+              - 'Dockerfile'
             go:
               - '*.go'
               - 'Makefile'
