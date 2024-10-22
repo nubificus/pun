@@ -4,12 +4,7 @@ on:
   pull_request:
     branches: ["main"]
   push:
-    paths:
-      - 'Dockerfile'
-      - '*.go'
-            #- 'images/rootless-ubuntu-jammy-go.Dockerfile'
-            #- 'images/rootless-ubuntu-numbat-go.Dockerfile'
-
+    branches: ["main", "staging"]
   workflow_dispatch: # build on demand
   #schedule:
   #  - cron: "43 6 * * 0" # build every Sunday at 6:43 AM UTC
@@ -35,7 +30,7 @@ jobs:
         uses: dorny/paths-filter@v3
         with:
           list-files: 'json'
-          #base: 'feat_nbfc'
+          base: 'feat_add_runner'
           filters: |
             dockerfile:
               - 'Dockerfile'
@@ -51,15 +46,12 @@ jobs:
 
   build-pun:
     needs: [get-changed-files]
-    name: Go
+    name: Pun
     if: ${{ needs.get-changed-files.outputs.go || needs.get-changed-files.outputs.dockerfile }}
     uses: ./.github/workflows/build.yml
     secrets: inherit
     with:
-      runner: '["go", "dind", "2204"]'
+      runner: '["gcc", "dind", "2204"]'
       runner-archs: '["amd64", "arm64"]'
       dockerfiles: ${{ toJSON(fromJSON(needs.get-changed-files.outputs.dockerfile_files || '[]')) }}
-
-
-
 

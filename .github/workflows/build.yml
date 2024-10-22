@@ -121,7 +121,7 @@ jobs:
         dockerfile: ["${{ fromJSON(inputs.dockerfiles) }}"] 
     env:
       REGISTRY: ${{ inputs.registry }}
-      TAG: generic
+      #TAG: generic
 
     steps:
       - name: Checkout the repo
@@ -136,6 +136,22 @@ jobs:
           registry: ${{ env.REGISTRY }}
           username: ${{ secrets.harbor_user }}
           password: ${{ secrets.harbor_secret }}
+
+      - name: Set Docker tag based on branch or PR
+        id: tag
+        run: |
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            echo "PR detected. Using branch name: ${{ github.head_ref }}."
+            #SHORT_SHA=$(echo "${GITHUB_SHA}" | cut -c1-7)
+            echo "TAG=${{ github.head_ref }}" >> $GITHUB_ENV
+          elif [[ "${GITHUB_REF##*/}" == "main" ]]; then
+            echo "TAG=main" >> $GITHUB_ENV
+          elif [[ "${GITHUB_REF##*/}" == "staging" ]]; then
+            echo "TAG=staging" >> $GITHUB_ENV
+          else
+            SHORT_SHA=$(echo "${GITHUB_SHA}" | cut -c1-7)
+            echo "TAG=${SHORT_SHA}" >> $GITHUB_ENV
+          fi
 
       - name: Process runner architectures and create docker manifest
         id: create-manifest
@@ -156,7 +172,7 @@ jobs:
 
           # Optionally push the manifest (comment out if not needed)
           #          docker manifest push ${{ env.REGISTRY }}/${{ github.repository }}/${{ matrix.dockerfile }}:${{ env.TAG }}
-          VAR=`docker manifest push ${{ env.REGISTRY }}/${{ github.repository }}/:${{ env.TAG }} | tail -1`
+          VAR=`docker manifest push ${{ env.REGISTRY }}/${{ github.repository }}:${{ env.TAG }} | tail -1`
           echo "manifest_sha=$VAR" >> "$GITHUB_OUTPUT"
 
       - name: Install cosign
