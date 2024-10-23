@@ -143,7 +143,7 @@ jobs:
       - name: Set Docker tag based on branch, PR or version
         id: tag
         run: |
-          if [[ ${{ inputs.registry }} == true ]]; then
+          if [[ ${{ inputs.version-tag }} == true ]]; then
             echo "Version change detected. Using version: $( cat VERSION )."
             echo "TAG=$( cat VERSION ) " >> $GITHUB_ENV
           elif [[ "${GITHUB_REF##*/}" == "main" ]]; then
