@@ -18,6 +18,9 @@ on:
       registry:
         type: string
         default: 'harbor.nbfc.io'
+      version-tag:
+        type: boolean
+        default: false
     secrets:
       GIT_CLONE_PAT:
         required: false
@@ -140,8 +143,8 @@ jobs:
       - name: Set Docker tag based on branch, PR or version
         id: tag
         run: |
-          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
-            echo "PR detected. Using version: $( cat VERSION )."
+          if [[ ${{ inputs.registry }} == true ]]; then
+            echo "Version change detected. Using version: $( cat VERSION )."
             echo "TAG=$( cat VERSION ) " >> $GITHUB_ENV
           elif [[ "${GITHUB_REF##*/}" == "main" ]]; then
             echo "TAG=staging" >> $GITHUB_ENV

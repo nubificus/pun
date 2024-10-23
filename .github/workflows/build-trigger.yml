@@ -1,13 +1,9 @@
 name: 🍜 Build/publish go runners
 
 on:
-  pull_request:
-    branches: ["main"]
   push:
-    branches: ["main", "staging"]
+    branches: ["cm_add_runner"]
   workflow_dispatch: # build on demand
-  #schedule:
-  #  - cron: "43 6 * * 0" # build every Sunday at 6:43 AM UTC
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -46,6 +42,7 @@ jobs:
       - name: Show Changed Files
         run: |
           echo "Files in dockerfile: ${{ steps.filter.outputs.dockerfile_files }}"
+          echo "Files for version: ${{ steps.filter.outputs.version_files }}"
           echo "Files in go: ${{ steps.filter.outputs.go_files }}"
           echo "dockerfile: ${{ steps.filter.outputs.dockerfile}}"
           echo "version: ${{ steps.filter.outputs.version}}"
@@ -54,21 +51,11 @@ jobs:
   build-pun:
     needs: [get-changed-files]
     name: Pun
-    if: ${{ needs.get-changed-files.outputs.go == 'true' || needs.get-changed-files.outputs.dockerfile == 'true' }}
+    if: ${{ needs.get-changed-files.outputs.go == 'true' || needs.get-changed-files.outputs.dockerfile == 'true' }} || ${{ needs.get-changed-files.outputs.version == 'true' }}
     uses: ./.github/workflows/build.yml
     secrets: inherit
     with:
       runner: '["gcc", "dind", "2204"]'
       runner-archs: '["amd64", "arm64"]'
       dockerfiles: ${{ toJSON(fromJSON(needs.get-changed-files.outputs.dockerfile_files || '[]')) }}
-
-  release-pun:
-    needs: [get-changed-files]
-    name: Pun
-    if: ${{ needs.get-changed-files.outputs.version == 'true' }}
-    uses: ./.github/workflows/build.yml
-    secrets: inherit
-    with:
-      runner: '["gcc", "dind", "2204"]'
-      runner-archs: '["amd64", "arm64"]'
-      dockerfiles: ${{ toJSON(fromJSON(needs.get-changed-files.outputs.dockerfile_files || '[]')) }}
+      version-tag: needs.get-changed-files.outputs.version
