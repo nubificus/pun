@@ -58,4 +58,4 @@ jobs:
       runner: '["gcc", "dind", "2204"]'
       runner-archs: '["amd64", "arm64"]'
       dockerfiles: ${{ toJSON(fromJSON(needs.get-changed-files.outputs.dockerfile_files || '[]')) }}
-      version-tag: needs.get-changed-files.outputs.version
+      version-tag: ${{ needs.get-changed-files.outputs.version }}
