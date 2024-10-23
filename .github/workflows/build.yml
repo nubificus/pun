@@ -141,8 +141,8 @@ jobs:
         id: tag
         run: |
           if [[ "${{ github.event_name }}" == "pull_request" ]]; then
-            echo "PR detected. Using version: ${{ cat VERSION }}."
-            echo "TAG=${{ cat VERSION }}" >> $GITHUB_ENV
+            echo "PR detected. Using version: $( cat VERSION )."
+            echo "TAG=$( cat VERSION ) " >> $GITHUB_ENV
           elif [[ "${GITHUB_REF##*/}" == "main" ]]; then
             echo "TAG=staging" >> $GITHUB_ENV
           else
