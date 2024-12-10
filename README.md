@@ -18,7 +18,7 @@ use for pun needs to start with the following line.
 
 
 ```
-#syntax=harbor.nbfc.io/nubificus/urunc/pun/llb:latest
+#syntax=harbor.nbfc.io/nubificus/pun:latest
 ```
 
 Then, we can just execute docker build as usual. Buildkit will fetch an image
@@ -133,7 +133,7 @@ In case we have already built a rumprun unikernel, we can easily package it with
 a normal docker command that will use `pun`. To do that we need the following
 `Containerfile`:
 ```
-#syntax=harbor.nbfc.io/nubificus/urunc/pun/llb:latest
+#syntax=harbor.nbfc.io/nubificus/pun:latest
 FROM scratch
 
 COPY test-redis.hvt /unikernel/test-redis.hvt
@@ -163,7 +163,7 @@ In case we want to use an existing [unikraft](unikraft.org) unikernel image from
 to an image that `urunc` can execute with `pun`. In that case the
 `Containerfile` should look like:
 ```
-#syntax=harbor.nbfc.io/nubificus/urunc/pun/llb:latest
+#syntax=harbor.nbfc.io/nubificus/pun:latest
 FROM unikraft.org/nginx:1.15
 
 LABEL com.urunc.unikernel.binary="/unikraft/bin/kernel"
