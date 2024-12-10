@@ -12,6 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Versioning variables
+COMMIT         := $(shell git describe --dirty --long --always)
+VERSION        := $(shell cat $(CURDIR)/VERSION)-$(COMMIT)
+
 # Path variables
 #
 # Use absolute paths just for sanity.
@@ -31,6 +35,7 @@ GO_FLAGS       := GOOS=linux
 GO_FLAGS       += CGO_ENABLED=0
 
 # Linking variables
+LDFLAGS_COMMON := -X main.version=$(VERSION)
 LDFLAGS_STATIC := --extldflags -static
 LDFLAGS_OPT    := -s -w
 
@@ -71,7 +76,7 @@ $(VENDOR_DIR):
 # source files have not changed.
 $(PUN_BIN): main.go | prepare
 	$(GO_FLAGS) $(GO) build \
-		-ldflags "$(LDFLAGS_STATIC) $(LDFLAGS_OPT)" \
+		-ldflags "$(LDFLAGS_COMMON) $(LDFLAGS_STATIC) $(LDFLAGS_OPT)" \
 		-o $(PUN_BIN)
 
 ## install Install urunc and shim in PREFIX

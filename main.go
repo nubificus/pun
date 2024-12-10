@@ -44,6 +44,8 @@ const (
 )
 
 type CLIOpts struct {
+	// If set just print the version and exit
+	Version        bool
 	// The Containerfile to be used for building the unikernel container
 	ContainerFile  string
 	// Choose the execution mode. If set, then pun will not act as a
@@ -57,18 +59,23 @@ type PackInstructions struct {
 	Annots map[string]string	  // Annotations
 }
 
+var version string
+
 func usage() {
 
-	fmt.Println("Usage of bun")
+	fmt.Println("Usage of pun")
 	fmt.Printf("%s [<args>]\n\n", os.Args[0])
 	fmt.Println("Supported command line arguments")
+	fmt.Println("\t-v, --version bool \t\tPrint the version and exit")
 	fmt.Println("\t-f, --file filename \t\tPath to the Containerfile")
-	fmt.Println("\t--LLB bool \t\t\tPrint the LLBm instead of acting as a frontend")
+	fmt.Println("\t--LLB bool \t\t\tPrint the LLB instead of acting as a frontend")
 }
 
 func parseCLIOpts() CLIOpts {
 	var opts CLIOpts
 
+	flag.BoolVar(&opts.Version, "version", false, "Print the version and exit")
+	flag.BoolVar(&opts.Version, "v", false, "Print the version and exit")
 	flag.StringVar(&opts.ContainerFile, "file", "", "Path to the Containerfile")
 	flag.StringVar(&opts.ContainerFile, "f", "", "Path to the Containerfile")
 	flag.BoolVar(&opts.PrintLLB, "LLB", false, "Print the LLB, instead of acting as a frontend")
@@ -296,6 +303,10 @@ func main() {
 
 	cliOpts = parseCLIOpts()
 
+	if cliOpts.Version {
+		fmt.Printf("pun version %s\n", version)
+		return
+	}
 	if !cliOpts.PrintLLB {
 		// Run as buildkit frontend
 		ctx := appcontext.Context()
