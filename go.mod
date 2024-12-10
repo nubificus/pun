@@ -1,6 +1,6 @@
 module pun
 
-go 1.22.0
+go 1.22
 
 require (
 	github.com/moby/buildkit v0.16.0
