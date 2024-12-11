@@ -18,6 +18,9 @@ on:
       registry:
         type: string
         default: 'harbor.nbfc.io'
+      version-tag:
+        type: boolean
+        default: false
     secrets:
       GIT_CLONE_PAT:
         required: false
@@ -140,16 +143,15 @@ jobs:
       - name: Set Docker tag based on branch or PR
         id: tag
         run: |
-          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
-            echo "PR detected. Using branch name: ${{ github.head_ref }}."
-            #SHORT_SHA=$(echo "${GITHUB_SHA}" | cut -c1-7)
-            echo "TAG=${{ github.head_ref }}" >> $GITHUB_ENV
+          if [[ ${{ inputs.version-tag }} == true ]]; then
+            echo "Version change detected. Using version: $( cat VERSION )."
+            echo "TAG=$( cat VERSION ) " >> $GITHUB_ENV
           elif [[ "${GITHUB_REF##*/}" == "main" ]]; then
-            echo "TAG=main" >> $GITHUB_ENV
-          elif [[ "${GITHUB_REF##*/}" == "staging" ]]; then
-            echo "TAG=staging" >> $GITHUB_ENV
+            echo "Change in main branch detected. Using latest tag."
+            echo "TAG=latest" >> $GITHUB_ENV
           else
             SHORT_SHA=$(echo "${GITHUB_SHA}" | cut -c1-7)
+            echo "Using tag: ${SHORT_SHA}."
             echo "TAG=${SHORT_SHA}" >> $GITHUB_ENV
           fi
 
