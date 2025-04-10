@@ -1,3 +1,5 @@
+> **Pun is deprecated. We have moved to [bunny](https://github.com/nubificus/bunny) which serves more functionalities.** 
+
 # Pun: Package UNikernels
 
 This project aims to simplify the process of packaging unikernels for
